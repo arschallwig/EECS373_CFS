@@ -11,62 +11,53 @@ import serial
 signal_pin = 18
 
 def main():
-    net = detectNet("ssd-mobilenet-v2", threshold=0.5)
-    camera = videoSource("csi://0")      # '/dev/video0' for V4L2
-    display = videoOutput("display://0") # 'my_video.mp4' for file
+    print("Preparing GPIO Pins")
 
-    while display.IsStreaming():
-        img = camera.Capture()
-        detections = net.Detect(img)
-        display.Render(img)
-        display.SetStatus("Object Detection | Network {:.0f} FPS".format(net.GetNetworkFPS()))
+    # Pin setup
+    GPIO.setmode(GPIO.BOARD)
+    GPIO.setup(signal_pin, GPIO.IN)
 
+    # Prepare UART serial overhead
+    serial_port = serial.Serial(
+        port = "/dev/ttyTHS1",
+        baudrate=115200,
+        bytesize=serial.EIGHTBITS,
+        parity=serial.PARITY_NONE,
+        stopbits=serial.STOPBITS_ONE,
+    )
+    time.sleep(1)
 
-#     print("Preparing GPIO Pins")
+    # Prepare CV 
+    net = detectNet("pednet", ['--log-level=error'], threshold=0.3)
+    camera = videoSource("csi://0")
+    # display = videoOutput("display://0")
+    num_peds = 0
 
-#     # Pin setup
-#     GPIO.setmode(GPIO.BOARD)
-#     GPIO.setup(signal_pin, GPIO.IN)
-#    # Prepare UART serial overhead
-#     serial_port = serial.Serial(
-#         port = "/dev/ttyTHS1",
-#         baudrate=115200,
-#         bytesize=serial.EIGHTBITS,
-#         parity=serial.PARITY_NONE,
-#         stopbits=serial.STOPBITS_ONE,
-#     )
-#     time.sleep(1)
+    # Run first frame of detection
+    print("---------- RUNNING FIRST DETECTION ----------")
+    img = camera.Capture()
+    detections = net.Detect(img)
+    num_peds += len(detections)
+    # display.Render(img)
 
-#     # Prepare CV 
-#     net = detectNet("pednet", threshold=0.5)
-#     camera = videoSource("csi://0")
-#     display = videoOutput("display://0")
-#     num_peds = 0
+    # Wait for the shared signal to go high
+    # GPIO.wait_for_edge(signal_pin, GPIO.RISING)
+    time.sleep(10)
 
-#     # Run first frame of detection
-#     img = camera.Capture()
-#     detections = net.Detect(img)
-#     num_peds += len(detections)
-#     display.Render(img)
+    # Run second frame of detection
+    print("---------- RUNNING SECOND DETECTION ----------")
+    img = camera.Capture()
+    detections = net.Detect(img)
+    num_peds += len(detections)
+    # display.Render(img)
 
-#     print("got here")
+    # Send count over uart connection to STM32
+    print("---------- DETECTED " + str(num_peds) + " PEDS ----------")
+    serial_port.write(num_peds)
 
-#     # Wait for the shared signal to go high
-#     GPIO.wait_for_edge(signal_pin, GPIO.RISING)
-#     # time.sleep(10)
-
-#     # Run second frame of detection
-#     img = camera.Capture()
-#     detections = net.Detect(img)
-#     num_peds += len(detections)
-#     display.Render(img)
-
-#     # Send count over uart connection to STM32
-#     serial_port.write(num_peds)
-
-#     # Clean up GPIO
-#     serial_port.close()
-#     GPIO.cleanup() #TODO will this even clean up the wake up/sleep interrupt pin?
+    # # Clean up GPIO
+    serial_port.close()
+    GPIO.cleanup() #TODO will this even clean up the wake up/sleep interrupt pin?
 
 if __name__ == '__main__':
     main()
