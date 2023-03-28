@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <math.h>
+#include "stdio.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,9 +47,13 @@ DAC_HandleTypeDef hdac1;
 UART_HandleTypeDef hlpuart1;
 UART_HandleTypeDef huart2;
 
+TIM_HandleTypeDef htim4;
+
 /* USER CODE BEGIN PV */
-uint8_t initialize = 0b1; // Initiate data read transaction
+uint8_t initialize[1] = {0b1}; // Initiate data read transaction
 uint8_t Rx_data[2]; // Creating a buffer of 8 bytes
+volatile uint8_t day;
+volatile double motion;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -58,6 +63,7 @@ static void MX_ADC1_Init(void);
 static void MX_DAC1_Init(void);
 static void MX_LPUART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 double lux_read(double);
 uint8_t* UART2_init(void);
@@ -100,8 +106,13 @@ int main(void)
   MX_DAC1_Init();
   MX_LPUART1_UART_Init();
   MX_USART2_UART_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
-
+  if (HAL_TIM_Base_Start_IT(&htim4) != HAL_OK)
+    {
+      /* Starting Error */
+      Error_Handler();
+    }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -109,14 +120,31 @@ int main(void)
   while (1)
   {
 	  double R = 10; // 10K Ohms
-	  double lux = lux_read(R);
-	  printf("lux value: %f \n\r", lux);
-	  if (lux < 1.) {
-		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b1); // Set F14 high
-	  }
-	  else {
+	  double lux;
+	  double motion_count = 0;
+	  motion = 0;
+	 for (int i = 0; i < 6; ++i) { // total of 3 seconds
+		 lux = lux_read(R);
+		//printf("lux value: %f \n\r", lux);
+
+		if (lux < 1.) {
+		  day = 0;
+		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b1); // Set F14 high -> wake up Jetson
+		}
+		else {
+		  day = 1;
 		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b1); // Set pin back to 0
-	  }
+		}
+		  motion_count += HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_6);
+		HAL_Delay(500); // 10 second poll interval in main
+	 }
+	 if (motion_count/6.0 > 0.8) {
+		 motion = 1;
+	 }
+
+	 // debugging stuff
+	 GPIO_PinState motion_v = HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_8);
+	 printf("motion value: %f \n\r", motion_v);
 
     /* USER CODE END WHILE */
 
@@ -369,6 +397,51 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 39999;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 30000;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -387,6 +460,12 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOG_CLK_ENABLE();
   HAL_PWREx_EnableVddIO2();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : PE2 PE3 */
   GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3;
@@ -410,6 +489,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.Alternate = GPIO_AF13_SAI1;
+  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PF8 */
+  GPIO_InitStruct.Pin = GPIO_PIN_8;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PA0 */
@@ -436,16 +521,17 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB2 PB6 */
-  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_6;
+  /*Configure GPIO pin : PB2 */
+  GPIO_InitStruct.Pin = GPIO_PIN_2;
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PF14 */
   GPIO_InitStruct.Pin = GPIO_PIN_14;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PE7 PE8 PE9 PE10
@@ -496,14 +582,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   GPIO_InitStruct.Alternate = GPIO_AF7_USART3;
-  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : PD14 PD15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_14|GPIO_PIN_15;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF2_TIM4;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PC6 */
@@ -570,6 +648,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF6_SPI3;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PB7 */
+  GPIO_InitStruct.Pin = GPIO_PIN_7;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
   /*Configure GPIO pins : PB8 PB9 */
   GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
@@ -577,18 +662,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PE0 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF2_TIM4;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-
-  /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 }
 
@@ -602,14 +675,21 @@ double lux_read(double R){
 	return  (double)pow(10, (-1*log(R*(3.3-Vr)/Vr) + 3.83)/0.858);
 }
 
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+	if (day & (htim == &htim4)) {
+		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_7);
+	}
+}
+
+
 uint8_t* UART2_init(void) {
 	HAL_UART_Transmit_IT(&huart2, initialize, sizeof(initialize));// Sending in interrupt mode
 	HAL_Delay(500); // wait 0.5 seconds
-	HAL_UART_Receive_IT(&huart2, Rx_data[0], 1); // get first processed data of pedestrian count
+	HAL_UART_Receive_IT(&huart2, &Rx_data[0], 1); // get first processed data of pedestrian count
 	HAL_Delay(500); // wait 0.5 seconds
 	HAL_UART_Transmit_IT(&huart2, initialize, sizeof(initialize));// Sending in interrupt mode
 	HAL_Delay(500); // wait 0.5 seconds
-	HAL_UART_Receive_IT(&huart2, Rx_data[1], 1); // get first processed data of pedestrian count
+	HAL_UART_Receive_IT(&huart2, &Rx_data[1], 1); // get first processed data of pedestrian count
 
 	return Rx_data;
 }
