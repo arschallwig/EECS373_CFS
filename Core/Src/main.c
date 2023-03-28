@@ -47,7 +47,8 @@ UART_HandleTypeDef hlpuart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+uint8_t initialize = 0b1; // Initiate data read transaction
+uint8_t Rx_data[2]; // Creating a buffer of 8 bytes
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -59,6 +60,7 @@ static void MX_LPUART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 double lux_read(double);
+uint8_t* UART2_init(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -73,9 +75,7 @@ double lux_read(double);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	HAL_StatusTypeDef ret;
-	uint8_t buf[12];
-	uint16_t num_ped;
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -109,8 +109,15 @@ int main(void)
   while (1)
   {
 	  double R = 10; // 10K Ohms
-	  double lux = lux_read(R); \
+	  double lux = lux_read(R);
 	  printf("lux value: %f \n\r", lux);
+	  if (lux < 1.) {
+		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b1); // Set F14 high
+	  }
+	  else {
+		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b1); // Set pin back to 0
+	  }
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -435,6 +442,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PF14 */
+  GPIO_InitStruct.Pin = GPIO_PIN_14;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
+
   /*Configure GPIO pins : PE7 PE8 PE9 PE10
                            PE11 PE12 PE13 */
   GPIO_InitStruct.Pin = GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10
@@ -573,6 +586,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF2_TIM4;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+
 }
 
 /* USER CODE BEGIN 4 */
@@ -583,6 +600,18 @@ double lux_read(double R){
 	Vr = HAL_ADC_GetValue(&hadc1);//retrieve value
 	Vr = 3.3*Vr/pow(2,12);
 	return  (double)pow(10, (-1*log(R*(3.3-Vr)/Vr) + 3.83)/0.858);
+}
+
+uint8_t* UART2_init(void) {
+	HAL_UART_Transmit_IT(&huart2, initialize, sizeof(initialize));// Sending in interrupt mode
+	HAL_Delay(500); // wait 0.5 seconds
+	HAL_UART_Receive_IT(&huart2, Rx_data[0], 1); // get first processed data of pedestrian count
+	HAL_Delay(500); // wait 0.5 seconds
+	HAL_UART_Transmit_IT(&huart2, initialize, sizeof(initialize));// Sending in interrupt mode
+	HAL_Delay(500); // wait 0.5 seconds
+	HAL_UART_Receive_IT(&huart2, Rx_data[1], 1); // get first processed data of pedestrian count
+
+	return Rx_data;
 }
 
 #ifdef __GNUC__
