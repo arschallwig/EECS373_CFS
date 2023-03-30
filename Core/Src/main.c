@@ -53,7 +53,7 @@ TIM_HandleTypeDef htim4;
 uint8_t initialize[1] = {0b1}; // Initiate data read transaction
 uint8_t Rx_data[2]; // Creating a buffer of 8 bytes
 volatile uint8_t day;
-volatile double motion;
+double motion;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -121,31 +121,31 @@ int main(void)
   {
 	  double R = 10; // 10K Ohms
 	  double lux;
-	  double motion_count = 0;
+	  volatile double motion_count = 0;
 	  motion = 0;
-	 for (int i = 0; i < 6; ++i) { // total of 3 seconds
+	 for (int i = 0; i < 12; ++i) { // total of 60 seconds interval, 12 samples taken
 		 lux = lux_read(R);
 		//printf("lux value: %f \n\r", lux);
-
 		if (lux < 1.) {
 		  day = 0;
-		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b1); // Set F14 high -> wake up Jetson
+		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b1); // Set F14 high -> put Jetson back into deep sleep
 		}
 		else {
 		  day = 1;
-		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b1); // Set pin back to 0
+		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b0); // Set pin back to 0 -> wake up Jetson from deep sleep
 		}
-		  motion_count += HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_6);
-		//HAL_Delay(500); // 10 second poll interval in main
-	 }
-	 if (motion_count/6.0 > 0.8) {
-		 motion = 1;
+		 motion_count += HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_8);
+		HAL_Delay(5000); // 5 second poll interval in main
 	 }
 
-	 // debugging stuff
-	 if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1) == GPIO_PIN_SET) {
-		 // latch
+	 if (motion_count/12.0 > 0.8) {
+		 HAL_TIM_Base_Start_IT(&htim4);
+		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 0b1); // Set shared signal gpio high -> Take pedestrian count on Jetson
 	 }
+	 else {
+		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 0b0); // Set shared signal gpio low -> Take pedestrian count on Jetson
+	 }
+
 	// printf("motion value: %f \n\r", motion_v);
 
     /* USER CODE END WHILE */
@@ -507,12 +507,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF1_TIM2;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PA1 */
-  GPIO_InitStruct.Pin = GPIO_PIN_1;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
   /*Configure GPIO pins : PA2 PA3 */
   GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
@@ -690,6 +684,8 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+// Converts photoresist readings into lux
 double lux_read(double R){
 	float Vr = 0;
 	HAL_ADC_Start(&hadc1);//start conversion
@@ -699,9 +695,10 @@ double lux_read(double R){
 	return  (double)pow(10, (-1*log(R*(3.3-Vr)/Vr) + 3.83)/0.858);
 }
 
+// Interrupt handler to record pedestrian count
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (day & (htim == &htim4)) {
-		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_7);
+		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_7); // Take Pedestrian count
 	}
 }
 
@@ -711,7 +708,7 @@ uint8_t* UART2_init(void) {
 	HAL_Delay(500); // wait 0.5 seconds
 	HAL_UART_Receive_IT(&huart1, &Rx_data[0], 1); // get first processed data of pedestrian count
 	HAL_Delay(500); // wait 0.5 seconds
-	HAL_UART_Transmit_IT(&huar1, initialize, sizeof(initialize));// Sending in interrupt mode
+	HAL_UART_Transmit_IT(&huart1, initialize, sizeof(initialize));// Sending in interrupt mode
 	HAL_Delay(500); // wait 0.5 seconds
 	HAL_UART_Receive_IT(&huart1, &Rx_data[1], 1); // get first processed data of pedestrian count
 
