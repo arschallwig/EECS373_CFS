@@ -32,6 +32,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define TIM_CNT_OFFSET 0x24
+#define TIM4_ADDR 0x40000800 //timer 4 base register
+
+#define MOTION_THRESHOLD 20
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -53,7 +57,8 @@ TIM_HandleTypeDef htim4;
 uint8_t initialize[1] = {0b1}; // Initiate data read transaction
 uint8_t Rx_data[2]; // Creating a buffer of 8 bytes
 volatile uint8_t day;
-double motion;
+static double R = 10; // 10K Ohms
+volatile int motion;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -119,12 +124,11 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  double R = 10; // 10K Ohms
-	  double lux;
-	  volatile double motion_count = 0;
+	  volatile double lux;
 	  motion = 0;
+
 	 for (int i = 0; i < 12; ++i) { // total of 60 seconds interval, 12 samples taken
-		 lux = lux_read(R);
+		 lux = lux_read(R); // pass in resistance
 		//printf("lux value: %f \n\r", lux);
 		if (lux < 1.) {
 		  day = 0;
@@ -134,16 +138,14 @@ int main(void)
 		  day = 1;
 		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b0); // Set pin back to 0 -> wake up Jetson from deep sleep
 		}
-		 motion_count += HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_8);
 		HAL_Delay(5000); // 5 second poll interval in main
 	 }
 
-	 if (motion_count/12.0 > 0.8) {
-		 HAL_TIM_Base_Start_IT(&htim4);
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 0b1); // Set shared signal gpio high -> Take pedestrian count on Jetson
-	 }
-	 else {
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 0b0); // Set shared signal gpio low -> Take pedestrian count on Jetson
+	 if (~HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) & (motion >= MOTION_THRESHOLD)) { // if there is enough motion detected
+		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 1); // Set shared signal gpio high -> Take pedestrian count on Jetson
+		 // reset TIM4
+		 uint32_t* TIM4_CNT = (uint32_t*)(TIM4_ADDR + TIM_CNT_OFFSET);
+		 *TIM4_CNT &= 0x00000000;
 	 }
 
 	// printf("motion value: %f \n\r", motion_v);
@@ -495,7 +497,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : PF8 */
   GPIO_InitStruct.Pin = GPIO_PIN_8;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
 
@@ -681,6 +683,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
 }
 
 /* USER CODE BEGIN 4 */
@@ -697,10 +703,22 @@ double lux_read(double R){
 
 // Interrupt handler to record pedestrian count
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-	if (day & (htim == &htim4)) {
-		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_7); // Take Pedestrian count
+	if (day & (htim == &htim4)) { // if daytime and TIM4 interrupt
+		if (HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_7) == 0) { // if shared signal is low
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 1); // Take Pedestrian count, ie shared signal high
+		}
+		else {
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 0); // set shared signal low
+		}
+
 	}
 }
+
+// Interrupt Handler function for motion sensing
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+	motion += 1; // increment counter if motion detected
+}
+
 
 
 uint8_t* UART2_init(void) {
