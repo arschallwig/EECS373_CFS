@@ -36,7 +36,7 @@
 #define TIM4_ADDR 0x40000800 //timer 4 base register
 #define TIM1_ADDR 0x40012C00 //timer 4 base register
 #define TIM_CCR2_OFFSET 0x38 //capture/compare register 2
-#define MOTION_THRESHOLD 30 // motion sensor trigger threshold
+#define MOTION_THRESHOLD 1 // motion sensor trigger threshold
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -57,7 +57,7 @@ TIM_HandleTypeDef htim4;
 
 /* USER CODE BEGIN PV */
 uint8_t initialize[1] = {0b1}; // Initiate data read transaction
-uint8_t Rx_data[2]; // Creating a buffer of 8 bytes
+uint8_t Rx_data[4] = {255, 255, 255, 255}; // Creating a buffer of 8 bytes
 volatile uint8_t day;
 static double R = 10; // 10K Ohms
 volatile int motion;
@@ -134,12 +134,17 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  //PB7: Servo Indicator
+	  //PC7: LED indicator of shared signal condition
+	  //PC8: STM -> Jetson
+	  //PC9: Jetson -> STM
+
 	  volatile double lux;
 	  motion = 0;
 
-	 for (int i = 0; i < 12; ++i) { // total of 60 seconds interval, 12 samples taken
+	 for (int i = 0; i < 3; ++i) { // total of 60 seconds interval, 12 samples taken
 		 lux = lux_read(R); // pass in resistance
-		//printf("lux value: %f \n\r", lux);
+		printf("lux value: %f \n\r", lux);
 		if (lux < 1.) {
 		  day = 0;
 		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b1); // Set F14 high -> put Jetson back into deep sleep
@@ -159,20 +164,37 @@ int main(void)
 	 }
 
 	 if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) == 1) { // if motion/5 min timer triggered -> actuate servos for reading and set shared signal (PC7) high for reading
+
 		 move_servo_right(); // move servo to first position
-		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, 1); // set shared signal high for first jetson reading
+		 // READY TO BEGIN DETECTION
+		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, 1);
 		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 1); // set shared signal high for first jetson reading
-		 while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_8) == 1) { // wait until jetson completes reading
-			 HAL_Delay(1000);
-		 }
+
+		 do { // wait until jetson completes reading
+			 HAL_Delay(200);
+			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 0); // set shared signal low
+		 } while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == 0);
+
 		 move_servo_center_left();
 		 move_servo_left(); // move to second position
-		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, 1); // set shared signal high for first jetson reading
-		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 1); // set shared signal high for first jetson reading
-		 while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_8) == 1) { // wait until jetson completes reading
-			 HAL_Delay(1000);
+
+		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 1); // set shared signal high for second jetson reading
+
+		 while (Rx_data[0] == 255) { // wait to receive data from jetson
+			 	HAL_UART_Receive(&huart2, Rx_data, 4, 1000); // get first processed data of pedestrian count
 		 }
+
+		 /*
+		 do { // wait until jetson completes reading
+				 HAL_Delay(1000);
+				 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 0);
+		 } while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == 0);
+		 */
+
+		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, 0); // set led indicator low
 		 move_servo_center_right(); // move servo back to center
+		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 0); // done with count algorithm
+		 printf("UART: %u \n\r", Rx_data[0]);
 	 }
 
 	// printf("motion value: %f \n\r", motion_v);
@@ -697,10 +719,8 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : PC9 */
   GPIO_InitStruct.Pin = GPIO_PIN_9;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PA8 PA10 */
@@ -832,22 +852,14 @@ void move_servo_center_right(void) {
 	}
 }
 
-// Interrupt Handler function for motion sensing
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-	motion += 1; // increment counter if motion detected
-}
-
-
-
-
 uint8_t* UART2_init(void) {
-	HAL_UART_Transmit_IT(&huart1, initialize, sizeof(initialize));// Sending in interrupt mode
+	HAL_UART_Transmit_IT(&huart2, initialize, sizeof(initialize));// Sending in interrupt mode
 	HAL_Delay(500); // wait 0.5 seconds
-	HAL_UART_Receive_IT(&huart1, &Rx_data[0], 1); // get first processed data of pedestrian count
+	HAL_UART_Receive_IT(&huart2, &Rx_data[0], 1); // get first processed data of pedestrian count
 	HAL_Delay(500); // wait 0.5 seconds,
-	HAL_UART_Transmit_IT(&huart1, initialize, sizeof(initialize));// Sending in interrupt mode
+	HAL_UART_Transmit_IT(&huart2, initialize, sizeof(initialize));// Sending in interrupt mode
 	HAL_Delay(500); // wait 0.5 seconds
-	HAL_UART_Receive_IT(&huart1, &Rx_data[1], 1); // get first processed data of pedestrian count
+	HAL_UART_Receive_IT(&huart2, &Rx_data[1], 1); // get first processed data of pedestrian count
 
 	return Rx_data;
 }
