@@ -53,7 +53,7 @@ def main():
 
     # Send count over uart connection to STM32
     print("---------- DETECTED " + str(num_peds) + " PEDS ----------")
-    serial_port.write(num_peds)
+    serial_port.write(num_peds.to_bytes(4, 'little'))
 
     # # Clean up GPIO
     serial_port.close()
