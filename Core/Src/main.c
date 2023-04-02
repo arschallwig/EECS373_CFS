@@ -36,7 +36,7 @@
 #define TIM4_ADDR 0x40000800 //timer 4 base register
 #define TIM1_ADDR 0x40012C00 //timer 4 base register
 #define TIM_CCR2_OFFSET 0x38 //capture/compare register 2
-#define MOTION_THRESHOLD 1 // motion sensor trigger threshold
+#define MOTION_THRESHOLD 30 // motion sensor trigger threshold
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -137,7 +137,7 @@ int main(void)
 	  volatile double lux;
 	  motion = 0;
 
-	 for (int i = 0; i < 3; ++i) { // total of 60 seconds interval, 12 samples taken
+	 for (int i = 0; i < 12; ++i) { // total of 60 seconds interval, 12 samples taken
 		 lux = lux_read(R); // pass in resistance
 		//printf("lux value: %f \n\r", lux);
 		if (lux < 1.) {
@@ -171,6 +171,7 @@ int main(void)
 			 HAL_Delay(1000);
 		 }
 		 move_servo_center_right(); // move servo back to center
+		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 0); // set servo motion trigger low
 	 }
 
 	// printf("motion value: %f \n\r", motion_v);
@@ -784,10 +785,10 @@ double lux_read(double R){
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (day & (htim == &htim4)) { // if daytime and TIM4 interrupt
 		if (HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_7) == 0) { // if shared signal is low
-			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 1); // Take Pedestrian count, ie shared signal high
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 1); // Take Pedestrian count, trigger servo motion
 		}
 		else {
-			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 0); // set shared signal low
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 0); // set servo motion trigger low
 		}
 
 	}
