@@ -161,17 +161,18 @@ int main(void)
 	 if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) == 1) { // if motion/5 min timer triggered -> actuate servos for reading and set shared signal (PC7) high for reading
 		 move_servo_right(); // move servo to first position
 		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, 1); // set shared signal high for first jetson reading
-		 while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_7) == 1) { // wait until jetson completes reading
+		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 1); // set shared signal high for first jetson reading
+		 while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_8) == 1) { // wait until jetson completes reading
 			 HAL_Delay(1000);
 		 }
 		 move_servo_center_left();
 		 move_servo_left(); // move to second position
 		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, 1); // set shared signal high for first jetson reading
-		 while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_7) == 1) { // wait until jetson completes reading
+		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 1); // set shared signal high for first jetson reading
+		 while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_8) == 1) { // wait until jetson completes reading
 			 HAL_Delay(1000);
 		 }
 		 move_servo_center_right(); // move servo back to center
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 0); // set servo motion trigger low
 	 }
 
 	// printf("motion value: %f \n\r", motion_v);
@@ -575,7 +576,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7|GPIO_PIN_8, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
@@ -687,19 +688,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF13_SAI2;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PC7 */
-  GPIO_InitStruct.Pin = GPIO_PIN_7;
+  /*Configure GPIO pins : PC7 PC8 */
+  GPIO_InitStruct.Pin = GPIO_PIN_7|GPIO_PIN_8;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : PC8 PC10 PC11 PC12 */
-  GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_10|GPIO_PIN_11|GPIO_PIN_12;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF12_SDMMC1;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PC9 */
@@ -723,6 +716,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PC10 PC11 PC12 */
+  GPIO_InitStruct.Pin = GPIO_PIN_10|GPIO_PIN_11|GPIO_PIN_12;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF12_SDMMC1;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PD0 */
   GPIO_InitStruct.Pin = GPIO_PIN_0;
