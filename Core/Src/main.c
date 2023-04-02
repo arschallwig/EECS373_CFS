@@ -32,11 +32,18 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+<<<<<<< HEAD
 #define TIM_CNT_OFFSET 0x24 // timer counter reg offset
 #define TIM4_ADDR 0x40000800 //timer 4 base register
 #define TIM1_ADDR 0x40012C00 //timer 4 base register
 #define TIM_CCR2_OFFSET 0x38 //capture/compare register 2
 #define MOTION_THRESHOLD 1 // motion sensor trigger threshold
+=======
+#define TIM_CNT_OFFSET 0x24
+#define TIM4_ADDR 0x40000800 //timer 4 base register
+
+#define MOTION_THRESHOLD 20
+>>>>>>> cba971235e421844080f70fa7e915f714f8fc2be
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -70,8 +77,12 @@ static void MX_ADC1_Init(void);
 static void MX_DAC1_Init(void);
 static void MX_LPUART1_UART_Init(void);
 static void MX_TIM4_Init(void);
+<<<<<<< HEAD
 static void MX_USART1_UART_Init(void);
 static void MX_TIM1_Init(void);
+=======
+static void MX_USART2_UART_Init(void);
+>>>>>>> cba971235e421844080f70fa7e915f714f8fc2be
 /* USER CODE BEGIN PFP */
 double lux_read(double);
 uint8_t* UART2_init(void);
@@ -119,8 +130,12 @@ int main(void)
   MX_DAC1_Init();
   MX_LPUART1_UART_Init();
   MX_TIM4_Init();
+<<<<<<< HEAD
   MX_USART1_UART_Init();
   MX_TIM1_Init();
+=======
+  MX_USART2_UART_Init();
+>>>>>>> cba971235e421844080f70fa7e915f714f8fc2be
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
   if (HAL_TIM_Base_Start_IT(&htim4) != HAL_OK)
@@ -137,7 +152,11 @@ int main(void)
 	  volatile double lux;
 	  motion = 0;
 
+<<<<<<< HEAD
 	 for (int i = 0; i < 3; ++i) { // total of 60 seconds interval, 12 samples taken
+=======
+	 for (int i = 0; i < 12; ++i) { // total of 60 seconds interval, 12 samples taken
+>>>>>>> cba971235e421844080f70fa7e915f714f8fc2be
 		 lux = lux_read(R); // pass in resistance
 		//printf("lux value: %f \n\r", lux);
 		if (lux < 1.) {
@@ -152,6 +171,7 @@ int main(void)
 	 }
 
 	 if (~HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) & (motion >= MOTION_THRESHOLD)) { // if there is enough motion detected
+<<<<<<< HEAD
 		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 1); // Set servo to first position -> Take pedestrian count on Jetson
 
 		 uint32_t* TIM4_CNT = (uint32_t*)(TIM4_ADDR + TIM_CNT_OFFSET);
@@ -171,6 +191,12 @@ int main(void)
 			 HAL_Delay(1000);
 		 }
 		 move_servo_center_right(); // move servo back to center
+=======
+		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 1); // Set shared signal gpio high -> Take pedestrian count on Jetson
+		 // reset TIM4
+		 uint32_t* TIM4_CNT = (uint32_t*)(TIM4_ADDR + TIM_CNT_OFFSET);
+		 *TIM4_CNT &= 0x00000000;
+>>>>>>> cba971235e421844080f70fa7e915f714f8fc2be
 	 }
 
 	// printf("motion value: %f \n\r", motion_v);
@@ -391,6 +417,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE BEGIN USART1_Init 1 */
 
+<<<<<<< HEAD
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
   huart1.Init.BaudRate = 115200;
@@ -404,6 +431,21 @@ static void MX_USART1_UART_Init(void)
   huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
   huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
   if (HAL_UART_Init(&huart1) != HAL_OK)
+=======
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart2.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+>>>>>>> cba971235e421844080f70fa7e915f714f8fc2be
   {
     Error_Handler();
   }
@@ -806,6 +848,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 0); // set shared signal low
 		}
 
+<<<<<<< HEAD
 	}
 }
 
@@ -843,8 +886,16 @@ void move_servo_center_right(void) {
 			HAL_Delay(50);
 			*tim1_ccr2 &= ~(0xFFFF);
 			*tim1_ccr2 |= i;
+=======
+>>>>>>> cba971235e421844080f70fa7e915f714f8fc2be
 	}
 }
+
+// Interrupt Handler function for motion sensing
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+	motion += 1; // increment counter if motion detected
+}
+
 
 
 
@@ -852,9 +903,15 @@ uint8_t* UART2_init(void) {
 	HAL_UART_Transmit_IT(&huart1, initialize, sizeof(initialize));// Sending in interrupt mode
 	HAL_Delay(500); // wait 0.5 seconds
 	HAL_UART_Receive_IT(&huart1, &Rx_data[0], 1); // get first processed data of pedestrian count
+<<<<<<< HEAD
 	HAL_Delay(500); // wait 0.5 seconds,
 	HAL_UART_Transmit_IT(&huart1, initialize, sizeof(initialize));// Sending in interrupt mode
 	HAL_Delay(500); // wait 0.5 seconds
+=======
+	HAL_Delay(500); // wait 0.5 seconds
+	HAL_UART_Transmit_IT(&huart1, initialize, sizeof(initialize));// Sending in interrupt mode
+	HAL_Delay(500); // wait 0.5 seconds
+>>>>>>> cba971235e421844080f70fa7e915f714f8fc2be
 	HAL_UART_Receive_IT(&huart1, &Rx_data[1], 1); // get first processed data of pedestrian count
 
 	return Rx_data;
