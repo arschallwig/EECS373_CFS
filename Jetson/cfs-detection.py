@@ -8,14 +8,21 @@ import time
 import serial
 
 # Pin Definitions:
-signal_pin = 18
+i_signal_pin = 23 # C8 on the STM
+o_signal_pin_out = 24 #C9 on the STM
 
 def main():
     print("Preparing GPIO Pins")
 
     # Pin setup
     GPIO.setmode(GPIO.BOARD)
-    GPIO.setup(signal_pin, GPIO.IN)
+    GPIO.setup(i_signal_pin, GPIO.IN)
+    GPIO.setup(o_signal_pin_out, GPIO.OUT, initial=GPIO.HIGH)
+
+    # Wait for the shared signal to go high - first detection
+    print("Waiting for first detection signal")
+    GPIO.wait_for_edge(i_signal_pin, GPIO.RISING)
+    GPIO.output(o_signal_pin_out, GPIO.LOW)
 
     # Prepare UART serial overhead
     serial_port = serial.Serial(
@@ -28,32 +35,40 @@ def main():
     time.sleep(1)
 
     # Prepare CV 
-    net = detectNet("pednet", ['--log-level=error'], threshold=0.3)
+    net = detectNet("pednet", threshold=0.3)
     camera = videoSource("csi://0")
     # display = videoOutput("display://0")
     num_peds = 0
 
     # Run first frame of detection
-    print("---------- RUNNING FIRST DETECTION ----------")
+    print("-------------------- RUNNING FIRST DETECTION --------------------")
     img = camera.Capture()
     detections = net.Detect(img)
     num_peds += len(detections)
     # display.Render(img)
 
-    # Wait for the shared signal to go high
-    # GPIO.wait_for_edge(signal_pin, GPIO.RISING)
-    time.sleep(10)
+    # Done with first detection, set shared signal low
+    GPIO.output(o_signal_pin_out, GPIO.HIGH)
+
+    # Wait for the shared signal to go high - second detection
+    print("Waiting for second detection signal")
+    GPIO.wait_for_edge(i_signal_pin, GPIO.RISING)
+    GPIO.output(o_signal_pin_out, GPIO.LOW)
+
 
     # Run second frame of detection
-    print("---------- RUNNING SECOND DETECTION ----------")
+    print("-------------------- RUNNING SECOND DETECTION --------------------")
     img = camera.Capture()
     detections = net.Detect(img)
     num_peds += len(detections)
     # display.Render(img)
 
     # Send count over uart connection to STM32
-    print("---------- DETECTED " + str(num_peds) + " PEDS ----------")
+    print("-------------------- DETECTED " + str(num_peds) + " PEDS --------------------")
     serial_port.write(num_peds.to_bytes(4, 'little'))
+    
+    # Done with second detection, set shared signal low
+    GPIO.output(o_signal_pin_out, GPIO.HIGH)
 
     # # Clean up GPIO
     serial_port.close()
