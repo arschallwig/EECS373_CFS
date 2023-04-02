@@ -122,33 +122,54 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  uint8_t uart_rx[4] = {0};
   while (1)
   {
-	  volatile double lux;
-	  motion = 0;
+//	  volatile double lux;
+//	  motion = 0;
+//
+//	 for (int i = 0; i < 12; ++i) { // total of 60 seconds interval, 12 samples taken
+//		 lux = lux_read(R); // pass in resistance
+//		printf("lux value: %f \n\r", lux);
+//		if (lux < 1.) {
+//		  day = 0;
+//		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b1); // Set F14 high -> put Jetson back into deep sleep
+//		}
+//		else {
+//		  day = 1;
+//		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b0); // Set pin back to 0 -> wake up Jetson from deep sleep
+//		}
+//		HAL_Delay(5000); // 5 second poll interval in main
+//	 }
+//
+//	 if (~HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) & (motion >= MOTION_THRESHOLD)) { // if there is enough motion detected
+//		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 1); // Set shared signal gpio high -> Take pedestrian count on Jetson
+//		 // reset TIM4
+//		 uint32_t* TIM4_CNT = (uint32_t*)(TIM4_ADDR + TIM_CNT_OFFSET);
+//		 *TIM4_CNT &= 0x00000000;
+//	 }
 
-	 for (int i = 0; i < 12; ++i) { // total of 60 seconds interval, 12 samples taken
-		 lux = lux_read(R); // pass in resistance
-		//printf("lux value: %f \n\r", lux);
-		if (lux < 1.) {
-		  day = 0;
-		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b1); // Set F14 high -> put Jetson back into deep sleep
+	printf("----- About to receive over uart -----\n\r");
+	printf("Current rx buffer state: ");
+	for(int j = 0; j < 4; ++j ) {
+		printf("%u ", uart_rx[j]);
+	}
+	printf("\n\r");
+
+	HAL_UART_Receive(&huart2, uart_rx, 4, 1000);
+
+	printf("Received rx buffer state: ");
+		for(int j = 0; j < 4; ++j ) {
+			printf("%u ", uart_rx[j]);
 		}
-		else {
-		  day = 1;
-		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b0); // Set pin back to 0 -> wake up Jetson from deep sleep
-		}
-		HAL_Delay(5000); // 5 second poll interval in main
-	 }
+		printf("\n\r");
 
-	 if (~HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) & (motion >= MOTION_THRESHOLD)) { // if there is enough motion detected
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 1); // Set shared signal gpio high -> Take pedestrian count on Jetson
-		 // reset TIM4
-		 uint32_t* TIM4_CNT = (uint32_t*)(TIM4_ADDR + TIM_CNT_OFFSET);
-		 *TIM4_CNT &= 0x00000000;
-	 }
+	if(uart_rx[0] != 0 || uart_rx[1] != 0 || uart_rx[2] != 0 || uart_rx[3] != 0) {
+		printf("WHOA there are %u pedestrians\n\r", uart_rx[0]);
+		while(1){}
+	}
 
-	// printf("motion value: %f \n\r", motion_v);
+//	printf("uart received %d \n\r", uart_rx[0]);
 
     /* USER CODE END WHILE */
 
@@ -706,13 +727,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 
 
 uint8_t* UART2_init(void) {
-	HAL_UART_Transmit_IT(&huart1, initialize, sizeof(initialize));// Sending in interrupt mode
+	HAL_UART_Transmit_IT(&huart2, initialize, sizeof(initialize));// Sending in interrupt mode
 	HAL_Delay(500); // wait 0.5 seconds
-	HAL_UART_Receive_IT(&huart1, &Rx_data[0], 1); // get first processed data of pedestrian count
+	HAL_UART_Receive_IT(&huart2, &Rx_data[0], 1); // get first processed data of pedestrian count
 	HAL_Delay(500); // wait 0.5 seconds
-	HAL_UART_Transmit_IT(&huart1, initialize, sizeof(initialize));// Sending in interrupt mode
+	HAL_UART_Transmit_IT(&huart2, initialize, sizeof(initialize));// Sending in interrupt mode
 	HAL_Delay(500); // wait 0.5 seconds
-	HAL_UART_Receive_IT(&huart1, &Rx_data[1], 1); // get first processed data of pedestrian count
+	HAL_UART_Receive_IT(&huart2, &Rx_data[1], 1); // get first processed data of pedestrian count
 
 	return Rx_data;
 }
