@@ -230,16 +230,20 @@ int main(void)
 		printf("lux value: %f \n\r", lux);
 		if (lux < 1.) {
 		  day = 0;
-		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b1); // Set F14 high -> put Jetson back into deep sleep
+		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b0); // Set F14 high -> put Jetson back into deep sleep
 		}
 		else {
 		  day = 1;
+		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b0); // Set F14 high -> put Jetson back into deep sleep
 		}
 		HAL_Delay(5000); // 5 second poll interval in main
 	 }
 
 	 if (day & ~HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) & (motion >= MOTION_THRESHOLD)) { // if there is enough motion detected
-		 HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b0); // Set pin back to 0 -> wake up Jetson from deep sleep
+		 HAL_GPIO_TogglePin(GPIOF, GPIO_PIN_14); // toggle pin to 0 -> wake up Jetson from deep sleep
+		 HAL_Delay(100);
+		 HAL_GPIO_TogglePin(GPIOF, GPIO_PIN_14); // toggle pin to 1
+
 		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 1); // Starts the data analysis process
 		 printf("motion count: %u \n\r", motion);
 
@@ -252,6 +256,7 @@ int main(void)
 	 }
 
 	 if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) == 1) { // if motion or 5 min timer triggered -> actuate servos for reading and set shared signal (PC7) high for reading
+		 HAL_NVIC_DisableIRQ(EXTI9_5_IRQn); // disable interrupts
 		 move_servo_right(); // move servo to first position
 		 // READY TO BEGIN DETECTION
 		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, 1);
@@ -277,7 +282,10 @@ int main(void)
 		 move_servo_center_right(); // move servo back to center, reset
 
 		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 0); // done with count algorithm, stop servo movement
+		 HAL_NVIC_EnableIRQ(EXTI9_5_IRQn); // disable interrupts
 	 }
+
+
 
 	// printf("motion value: %f \n\r", motion_v);
 
@@ -869,7 +877,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 }
@@ -890,7 +898,10 @@ double lux_read(double R){
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (day & (htim == &htim4)) { // if daytime and TIM4 interrupt
 		if (HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_7) == 0) { // if shared signal is low
-			HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b0); // Set pin back to 0 -> wake up Jetson from deep sleep
+			HAL_GPIO_TogglePin(GPIOF, GPIO_PIN_14); // toggle pin to 0 -> wake up Jetson from deep sleep
+			 HAL_Delay(100);
+			 HAL_GPIO_TogglePin(GPIOF, GPIO_PIN_14); // toggle pin to 1
+
 			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 1); // Take Pedestrian count, trigger servo motion
 		}
 		else {
