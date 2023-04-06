@@ -245,32 +245,42 @@ int main(void)
 		 HAL_GPIO_TogglePin(GPIOF, GPIO_PIN_14); // toggle pin to 1
 
 		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 1); // Starts the data analysis process
+
 		 printf("motion count: %u \n\r", motion);
 
 		 uint32_t* TIM4_CNT = (uint32_t*)(TIM4_ADDR + TIM_CNT_OFFSET);
 		 *TIM4_CNT &= 0x00000000; // reset TIM4
+
+		 HAL_Delay(5000);
 	 }
 
 	 while ((HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) == 1) & (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == 0)) {
-		 HAL_Delay(100);
+		 HAL_Delay(200);
+		 printf("Added delay before detection");
 	 }
 
 	 if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) == 1) { // if motion or 5 min timer triggered -> actuate servos for reading and set shared signal (PC7) high for reading
-		 HAL_NVIC_DisableIRQ(EXTI9_5_IRQn); // disable interrupts
+		// HAL_NVIC_DisableIRQ(EXTI9_5_IRQn); // disable interrupts
 		 move_servo_right(); // move servo to first position
 		 // READY TO BEGIN DETECTION
 		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, 1);
 		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 1); // set shared signal high for first jetson reading
+		 HAL_Delay(1);
+		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 0); // set shared signal low
 
-		 do { // wait until jetson completes reading
-			 HAL_Delay(200);
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 0); // set shared signal low
-		 } while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == 0);
+		 HAL_Delay(5000);
+		 while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == 0) { // wait until jetson completes reading
+			 printf("Waiting for first reading \n\r");
+		 }
 
+		 printf("Moving Servos \n\r");
 		 move_servo_center_left();
 		 move_servo_left(); // move to second position
+		 printf("Finished Moving Servos \n\r");
 
 		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 1); // set shared signal high for second jetson reading
+		 HAL_Delay(1);
+		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 0); // set shared signal low
 
 		 while (Rx_data[0] == 255) { // wait to receive data from jetson
 			 	HAL_UART_Receive(&huart2, Rx_data, 4, 1000); // get first processed data of pedestrian count
@@ -282,7 +292,7 @@ int main(void)
 		 move_servo_center_right(); // move servo back to center, reset
 
 		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 0); // done with count algorithm, stop servo movement
-		 HAL_NVIC_EnableIRQ(EXTI9_5_IRQn); // disable interrupts
+		 // HAL_NVIC_EnableIRQ(EXTI9_5_IRQn); // disable interrupts
 	 }
 
 
@@ -903,6 +913,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 			 HAL_GPIO_TogglePin(GPIOF, GPIO_PIN_14); // toggle pin to 1
 
 			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 1); // Take Pedestrian count, trigger servo motion
+
+			HAL_Delay(5000);
 		}
 		else {
 			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 0); // set servo motion trigger low
@@ -922,6 +934,7 @@ void move_servo_right(void) {
 		HAL_Delay(50);
 		*tim1_ccr2 &= ~(0xFFFF);
 		*tim1_ccr2 |= i;
+		printf("move servo right \n\r");
 	}
 }
 
@@ -930,6 +943,7 @@ void move_servo_center_left(void) {
 			HAL_Delay(50);
 			*tim1_ccr2 &= ~(0xFFFF);
 			*tim1_ccr2 |= i;
+			printf("move servo center left \n\r");
 	}
 }
 
@@ -938,6 +952,7 @@ void move_servo_left(void) {
 			HAL_Delay(50);
 			*tim1_ccr2 &= ~(0xFFFF);
 			*tim1_ccr2 |= i;
+			printf("move servo left \n\r");
 	}
 }
 
@@ -946,6 +961,7 @@ void move_servo_center_right(void) {
 			HAL_Delay(50);
 			*tim1_ccr2 &= ~(0xFFFF);
 			*tim1_ccr2 |= i;
+			printf("move servo center right \n\r");
 	}
 }
 
