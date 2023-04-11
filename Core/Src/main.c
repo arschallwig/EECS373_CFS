@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include <math.h>
 #include "stdio.h"
+#include "lora_sx1276.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -53,11 +54,12 @@ DAC_HandleTypeDef hdac1;
 UART_HandleTypeDef hlpuart1;
 UART_HandleTypeDef huart2;
 
+SPI_HandleTypeDef hspi1;
+
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim4;
 
 /* USER CODE BEGIN PV */
-uint8_t initialize[1] = {0b1}; // Initiate data read transaction
 uint8_t Rx_data[4] = {255, 255, 255, 255}; // Creating a buffer of 8 bytes
 volatile uint8_t day;
 static double R = 10; // 10K Ohms
@@ -73,6 +75,7 @@ static void MX_LPUART1_UART_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
 double lux_read(double);
 uint8_t* UART2_init(void);
@@ -200,6 +203,7 @@ int main(void)
   MX_TIM4_Init();
   MX_TIM1_Init();
   MX_USART2_UART_Init();
+  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
 
@@ -211,6 +215,21 @@ int main(void)
 
   max_init();
 
+  lora_sx1276 lora;
+
+  /*
+    // SX1276 compatible module connected to SPI1, NSS pin connected to GPIO with label LORA_NSS
+    uint8_t res = lora_init(&lora, &hspi1, GPIOE, GPIO_PIN_12, LORA_BASE_FREQUENCY_US);
+    if (res != LORA_OK) {
+      printf("LORA Initialization failed\n\r");
+    }
+
+    // Send packet can be as simple as
+	   res = lora_send_packet(&lora, (uint8_t *)"Test", 4);
+	   if (res != LORA_OK) {
+		 printf("LORA Send failed\n\r");
+	   }
+	*/
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -228,7 +247,7 @@ int main(void)
 	 for (int i = 0; i < 3; ++i) { // total of 60 seconds interval, 12 samples taken
 		lux = lux_read(R); // pass in resistance
 		printf("lux value: %f \n\r", lux);
-		if (lux < 1.) {
+		if (lux < 10.) {
 		  day = 0;
 		  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, 0b0); // Set F14 high -> put Jetson back into deep sleep
 		}
@@ -260,7 +279,8 @@ int main(void)
 	 }
 
 	 if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) == 1) { // if motion or 5 min timer triggered -> actuate servos for reading and set shared signal (PC7) high for reading
-		// HAL_NVIC_DisableIRQ(EXTI9_5_IRQn); // disable interrupts
+		 HAL_NVIC_DisableIRQ(EXTI9_5_IRQn); // disable interrupts
+		 Rx_data[0] = 255;
 		 move_servo_right(); // move servo to first position
 		 // READY TO BEGIN DETECTION
 		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, 1);
@@ -292,7 +312,15 @@ int main(void)
 		 move_servo_center_right(); // move servo back to center, reset
 
 		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, 0); // done with count algorithm, stop servo movement
-		 // HAL_NVIC_EnableIRQ(EXTI9_5_IRQn); // disable interrupts
+
+		 HAL_NVIC_EnableIRQ(EXTI9_5_IRQn); // disable interrupts
+		 /*
+		 // Send packet can be as simple as
+		   res = lora_send_packet(&lora, (uint8_t *)Rx_data, 4);
+		   if (res != LORA_OK) {
+		     printf("LORA Send failed");
+		   }
+		  */
 	 }
 
 
@@ -550,6 +578,46 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI1_Init(void)
+{
+
+  /* USER CODE BEGIN SPI1_Init 0 */
+
+  /* USER CODE END SPI1_Init 0 */
+
+  /* USER CODE BEGIN SPI1_Init 1 */
+
+  /* USER CODE END SPI1_Init 1 */
+  /* SPI1 parameter configuration*/
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_4BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_HARD_OUTPUT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial = 7;
+  hspi1.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI1_Init 2 */
+
+  /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
   * @brief TIM1 Initialization Function
   * @param None
   * @retval None
@@ -732,7 +800,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : PF8 */
   GPIO_InitStruct.Pin = GPIO_PIN_8;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
 
